@@ -1,0 +1,83 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dewey)
+library(data.table)
+library(tidyverse)
+library(sparklyr)
+
+Sys.setenv(JAVA_HOME = "/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home")
+```
+
+```{r}
+sc <- spark_connect(master = "local")
+
+# if(file.exists("source")) unlink("source", TRUE)
+# if(file.exists("source-out")) unlink("source-out", TRUE)
+# 
+# stream_generate_test(iterations = 1)
+# list.files("source")
+# 
+# read_folder <- stream_read_csv(sc, "source")
+
+# spark_disconnect(sc)
+```
+
+```{r}
+# load the wait time files
+files <-
+  data.table("filePath" = grep("*\\.csv", list.files("data/"), value = TRUE)) %>%
+  .[, "rideName" :=  sub("(\\_old)?\\.csv", "", filePath)]
+
+round_time = function(x, precision, method = round) {
+  if ("POSIXct" %in% class(x) == FALSE)
+    stop("x must be POSIXct")
+  
+  tz = attributes(x)$tzone
+  secs_rounded = method(as.numeric(x) / precision) * precision
+  as.POSIXct(secs_rounded, tz = tz, origin = "1970-01-01")
+}
+
+dt <- unique(rbindlist(apply(files[1], 1, function(x) { 
+    fread(paste0("data/", x["filePath"])) %>%
+    .[!is.na(SPOSTMIN) & SPOSTMIN != -999 | !is.na(SACTMIN) & SACTMIN != -999] %>%
+    .[, RIDENAME := x["rideName"]]
+  }), use.names = TRUE)) %>%
+  .[, `:=`(DATE = as.Date(date, format = "%m/%d/%Y"),
+           date = NULL,
+           DATETIME = round_time(datetime, 60*5, floor),
+           datetime = NULL)]
+head(dt)
+
+dt <- copy_to(sc, dt, overwrite = TRUE)
+```
+
+
+```{r}
+test <- dt %>%
+  group_by(RIDENAME, DATETIME) %>%
+  summarise(SPOSTMINmean = mean(SPOSTMIN, na.rm = TRUE),
+            SACTMINmean = mean(SACTMIN, na.rm = TRUE))
+print(test)
+
+small <- data.table(as.data.frame(test))[!is.na(SPOSTMINmean) & !is.na(SACTMINmean)]
+
+dataSplit <- sample(c(TRUE, FALSE), nrow(small), prob = c(.8, .2), replace = TRUE)
+train <- small[dataSplit & RIDENAME == "7_dwarfs_train"]
+test <- small[!dataSplit & RIDENAME == "7_dwarfs_train"]
+
+trainTemp <- cbind(train, 
+                   lagMultiple(train$SPOSTMINmean, -1:-5, "SPOSTMINmean"), 
+                   lagMultiple(train$SACTMINmean, -1:-5, "SACTMINmean"))
+
+# tmp <- glm(SACTMINmean ~ SPOSTMINmean + SPOSTMINmean_lag1, trainTemp[5:nrow(trainTemp)], family = "gaussian")
+regsearch(trainTemp[, SACTMINmean := lagMultiple(SACTMINmean, 1)][5:nrow(trainTemp), !c("RIDENAME")],
+          "SACTMINmean", colnames(trainTemp)[3:ncol(trainTemp)], 1, 3, "gaussian", interactions = TRUE, multi = TRUE)
+
+
+summary(tmp)
+```
+

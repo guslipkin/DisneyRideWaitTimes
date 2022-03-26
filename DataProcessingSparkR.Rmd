@@ -1,0 +1,38 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(data.table)
+library(tidyverse)
+
+if (nchar(Sys.getenv("SPARK_HOME")) < 1) {
+  Sys.setenv(SPARK_HOME = "/Users/guslipkin/spark/spark-3.2.1-bin-hadoop3.2")
+}
+library(SparkR, lib.loc = c(file.path(Sys.getenv("SPARK_HOME"), "R", "lib")))
+sparkR.session(master = "local[*]", sparkConfig = list(spark.driver.memory = "2g"))
+```
+
+```{r}
+files <-
+  data.table("filePath" = grep("*\\.csv", list.files("data/"), value = TRUE)) %>%
+  .[, "rideName" :=  sub("(\\_old)?\\.csv", "", filePath)]
+
+dt <- unique(rbindlist(apply(files, 1, function(x) { 
+    fread(paste0("data/", x["filePath"]))[, RIDENAME := x["rideName"]]
+  }), use.names = TRUE)) %>%
+  .[, `:=`(DATE = as.Date(date, format = "%m/%d/%Y"),
+           date = NULL,
+           DATETIME = lubridate::floor_date(datetime, unit = "minutes"),
+           datetime = NULL)]
+
+dt <- createDataFrame(dt)
+
+SparkR::summarize(groupBy(dt, dt$RIDENAME, dt$DATETIME), SPOSTMIN = mean(dt$SPOSTMIN))
+
+head(dt)
+
+sparkR.session.stop()
+```
+

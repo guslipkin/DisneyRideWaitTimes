@@ -1,0 +1,45 @@
+---
+title: "Disney World Ride Wait Times"
+output: html_notebook
+---
+
+```{r}
+library(data.table)
+library(magrittr)
+```
+
+
+```{r}
+# load the wait time files
+files <-
+  data.table("filePath" = grep("*\\.csv", list.files("data/"), value = TRUE)) %>%
+  .[, "rideName" :=  sub("(\\_old)?\\.csv", "", filePath)]
+
+dt <- unique(rbindlist(apply(files, 1, function(x) { 
+    fread(paste0("data/", x["filePath"]))[, RIDENAME := x["rideName"]]
+  }), use.names = TRUE))[1:1000,] %>%
+  .[, `:=`(DATE = as.Date(date, format = "%m/%d/%Y"),
+           date = NULL,
+           DATETIME = lubridate::floor_date(datetime, unit = "minutes"),
+           datetime = NULL)] %>%
+  .[, `:=`(SPOSTMIN2 = as.numeric(mean(SPOSTMIN, na.rm = TRUE)),
+           SACTMIN2 = as.numeric(mean(SACTMIN, na.rm = TRUE))), by = .(RIDENAME, DATETIME)]
+  # .[!is.na(SPOSTMIN) & !is.na(SACTMIN)] %>%
+  .[order(datetime, decreasing = FALSE)] %>%
+  .[, `:=`(DATE = as.Date(date, format = "%m/%d/%Y"),
+           date = NULL,
+           DATETIME = lubridate::floor_date(datetime, unit = "minutes"),
+           datetime = NULL)]
+head(dt)
+```
+
+```{r}
+files <- c("data/metadata/metadata.csv", "data/metadata/metadata_old.csv")
+metadata <- rbindlist(lapply(files, function(x) { fread(x) }), 
+                      use.names = TRUE, fill = TRUE)
+metadata <- metadata[!duplicated(rev(metadata[, .(DAYOFYEAR, YEAR)]))] %>%
+  .[order(YEAR, DAYOFYEAR)] %>%
+  .[, DATE := as.Date(DATE, format = "%m/%d/%y")]
+head(metadata)
+```
+
