@@ -1,13 +1,13 @@
 ----------------------------------------------------------------
-Tue Mar 22 15:08:18 EDT 2022:
-Booting Derby version The Apache Software Foundation - Apache Derby - 10.14.2.0 - (1828579): instance a816c00e-017f-b307-aa56-00001c2abc78 
-on database directory /Users/guslipkin/Documents/GitHub/DisneyRideWaitTimes/metastore_db with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@67424e82 
+Sun Mar 27 14:46:38 EDT 2022:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.14.2.0 - (1828579): instance a816c00e-017f-ccb3-a1c2-00001a6e6c60 
+on database directory memory:/Users/guslipkin/Documents/GitHub/DisneyRideWaitTimes/databaseName=metastore_db with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@67424e82 
 Loaded from file:/Users/guslipkin/spark/spark-3.2.1-bin-hadoop3.2/jars/derby-10.14.2.0.jar
 java.vendor=Azul Systems, Inc.
 java.runtime.version=11.0.14.1+1-LTS
 user.dir=/Users/guslipkin/Documents/GitHub/DisneyRideWaitTimes
 os.name=Mac OS X
-os.arch=aarch64
+os.arch=x86_64
 os.version=12.3
 derby.system.home=null
 Database Class Loader started - derby.database.classpath=''
