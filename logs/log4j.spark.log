@@ -1505,3 +1505,56 @@
 22/03/27 15:14:52 INFO ShutdownHookManager: Shutdown hook called
 22/03/27 15:14:52 INFO ShutdownHookManager: Deleting directory /private/var/folders/2l/fbt5472n7ks1xr82m33g3shw0000gn/T/spark-11277d13-c000-4640-9095-35c7a20bc7ad
 22/03/27 15:14:52 INFO ShutdownHookManager: Deleting directory /private/var/folders/2l/fbt5472n7ks1xr82m33g3shw0000gn/T/spark-a240962d-8087-474c-9fab-0985395032c3
+22/03/27 16:19:22 INFO HiveConf: Found configuration file file:/Users/guslipkin/spark/spark-3.2.1-bin-hadoop3.2/conf/hive-site.xml
+22/03/27 16:19:22 INFO SparkContext: Running Spark version 3.2.1
+22/03/27 16:19:22 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+22/03/27 16:19:23 INFO ResourceUtils: ==============================================================
+22/03/27 16:19:23 INFO ResourceUtils: No custom resources configured for spark.driver.
+22/03/27 16:19:23 INFO ResourceUtils: ==============================================================
+22/03/27 16:19:23 INFO SparkContext: Submitted application: sparklyr
+22/03/27 16:19:23 INFO ResourceProfile: Default ResourceProfile created, executor resources: Map(cores -> name: cores, amount: 1, script: , vendor: , memory -> name: memory, amount: 1024, script: , vendor: , offHeap -> name: offHeap, amount: 0, script: , vendor: ), task resources: Map(cpus -> name: cpus, amount: 1.0)
+22/03/27 16:19:23 INFO ResourceProfile: Limiting resource is cpu
+22/03/27 16:19:23 INFO ResourceProfileManager: Added ResourceProfile id: 0
+22/03/27 16:19:23 INFO SecurityManager: Changing view acls to: guslipkin
+22/03/27 16:19:23 INFO SecurityManager: Changing modify acls to: guslipkin
+22/03/27 16:19:23 INFO SecurityManager: Changing view acls groups to: 
+22/03/27 16:19:23 INFO SecurityManager: Changing modify acls groups to: 
+22/03/27 16:19:23 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users  with view permissions: Set(guslipkin); groups with view permissions: Set(); users  with modify permissions: Set(guslipkin); groups with modify permissions: Set()
+22/03/27 16:19:23 INFO Utils: Successfully started service 'sparkDriver' on port 53965.
+22/03/27 16:19:23 INFO SparkEnv: Registering MapOutputTracker
+22/03/27 16:19:23 INFO SparkEnv: Registering BlockManagerMaster
+22/03/27 16:19:23 INFO BlockManagerMasterEndpoint: Using org.apache.spark.storage.DefaultTopologyMapper for getting topology information
+22/03/27 16:19:23 INFO BlockManagerMasterEndpoint: BlockManagerMasterEndpoint up
+22/03/27 16:19:23 INFO SparkEnv: Registering BlockManagerMasterHeartbeat
+22/03/27 16:19:23 INFO DiskBlockManager: Created local directory at /private/var/folders/2l/fbt5472n7ks1xr82m33g3shw0000gn/T/blockmgr-42aedfb2-c1a0-4dac-a4e1-f995673656a4
+22/03/27 16:19:23 INFO MemoryStore: MemoryStore started with capacity 1048.8 MiB
+22/03/27 16:19:23 INFO SparkEnv: Registering OutputCommitCoordinator
+22/03/27 16:19:23 WARN Utils: Service 'SparkUI' could not bind on port 4040. Attempting port 4041.
+22/03/27 16:19:23 INFO Utils: Successfully started service 'SparkUI' on port 4041.
+22/03/27 16:19:23 INFO SparkUI: Bound SparkUI to 127.0.0.1, and started at http://localhost:4041
+22/03/27 16:19:23 INFO SparkContext: Added JAR file:/Library/Frameworks/R.framework/Versions/4.1/Resources/library/sparklyr/java/sparklyr-master-2.12.jar at spark://localhost:53965/jars/sparklyr-master-2.12.jar with timestamp 1648412362958
+22/03/27 16:19:23 INFO Executor: Starting executor ID driver on host localhost
+22/03/27 16:19:23 INFO Executor: Fetching spark://localhost:53965/jars/sparklyr-master-2.12.jar with timestamp 1648412362958
+22/03/27 16:19:23 INFO TransportClientFactory: Successfully created connection to localhost/127.0.0.1:53965 after 12 ms (0 ms spent in bootstraps)
+22/03/27 16:19:23 INFO Utils: Fetching spark://localhost:53965/jars/sparklyr-master-2.12.jar to /private/var/folders/2l/fbt5472n7ks1xr82m33g3shw0000gn/T/spark-80531641-35d0-46ce-879f-e576a29d1c56/userFiles-ee43276a-4099-462c-a655-8a6f93c04872/fetchFileTemp6005287252145467161.tmp
+22/03/27 16:19:23 INFO Executor: Adding file:/private/var/folders/2l/fbt5472n7ks1xr82m33g3shw0000gn/T/spark-80531641-35d0-46ce-879f-e576a29d1c56/userFiles-ee43276a-4099-462c-a655-8a6f93c04872/sparklyr-master-2.12.jar to class loader
+22/03/27 16:19:23 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 53967.
+22/03/27 16:19:23 INFO NettyBlockTransferService: Server created on localhost:53967
+22/03/27 16:19:23 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block replication policy
+22/03/27 16:19:23 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(driver, localhost, 53967, None)
+22/03/27 16:19:23 INFO BlockManagerMasterEndpoint: Registering block manager localhost:53967 with 1048.8 MiB RAM, BlockManagerId(driver, localhost, 53967, None)
+22/03/27 16:19:23 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, localhost, 53967, None)
+22/03/27 16:19:23 INFO BlockManager: Initialized BlockManager: BlockManagerId(driver, localhost, 53967, None)
+22/03/27 16:19:24 INFO SharedState: Setting hive.metastore.warehouse.dir ('null') to the value of spark.sql.warehouse.dir.
+22/03/27 16:19:24 INFO SharedState: Warehouse path is 'file:/Users/guslipkin/Documents/GitHub/DisneyRideWaitTimes/spark-warehouse'.
+22/03/27 16:20:22 INFO SparkContext: Invoking stop() from shutdown hook
+22/03/27 16:20:22 INFO SparkUI: Stopped Spark web UI at http://localhost:4041
+22/03/27 16:20:22 INFO MapOutputTrackerMasterEndpoint: MapOutputTrackerMasterEndpoint stopped!
+22/03/27 16:20:22 INFO MemoryStore: MemoryStore cleared
+22/03/27 16:20:22 INFO BlockManager: BlockManager stopped
+22/03/27 16:20:22 INFO BlockManagerMaster: BlockManagerMaster stopped
+22/03/27 16:20:22 INFO OutputCommitCoordinator$OutputCommitCoordinatorEndpoint: OutputCommitCoordinator stopped!
+22/03/27 16:20:22 INFO SparkContext: Successfully stopped SparkContext
+22/03/27 16:20:22 INFO ShutdownHookManager: Shutdown hook called
+22/03/27 16:20:22 INFO ShutdownHookManager: Deleting directory /private/var/folders/2l/fbt5472n7ks1xr82m33g3shw0000gn/T/spark-80531641-35d0-46ce-879f-e576a29d1c56
+22/03/27 16:20:22 INFO ShutdownHookManager: Deleting directory /private/var/folders/2l/fbt5472n7ks1xr82m33g3shw0000gn/T/spark-9ebe9e4a-b19a-4d38-9ace-b4c8010b4f9e

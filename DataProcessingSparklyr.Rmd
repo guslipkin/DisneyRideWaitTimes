@@ -1,8 +1,8 @@
 ---
 title: "R Notebook"
 output:
-  html_notebook: default
   pdf_document: default
+  html_notebook: default
 ---
 
 ```{r}
@@ -120,6 +120,7 @@ sapply(unique(dtMeta$park), function(x) {
 })
 ```
 
+# **TIME IS IN SECONDS SINCE MIDNIGHT**
 
 ```{r, echo = FALSE, results='hide', fig.keep='all'}
 library(tree)
@@ -132,9 +133,10 @@ train <- dt[rowPicker, ]
 test <- dt[!rowPicker, ]
 
 sapply(unique(dtMeta$park), function(x) {
-  rides <- colnames(train)[grepl(paste0(dtMeta$RIDENAME[dtMeta$park == x],
+  rides <- c(colnames(train)[grepl(paste0(dtMeta$RIDENAME[dtMeta$park == x],
                                         collapse = "|"),
-                                 colnames(train))]
+                                 colnames(train))],
+             "DATE", "MONTH", "DAY", "TIME")
   actuals <- rides[grepl("(SACTMIN)", rides)]
   return(sapply(actuals, function(y) {
     tr <- rpart(as.formula(paste(y, "~ .")), train[, ..rides])
