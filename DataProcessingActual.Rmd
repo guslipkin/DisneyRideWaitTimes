@@ -11,6 +11,10 @@ library(data.table)
 library(tidyverse)
 library(sparklyr)
 
+library(tree)
+library(caret)
+library(rpart.plot)
+
 Sys.setenv(JAVA_HOME = "/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home")
 ```
 
@@ -33,7 +37,7 @@ Sys.setenv(JAVA_HOME = "/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/H
 files <-
   data.table("filePath" = grep("*\\.csv", list.files("data/"), value = TRUE)) %>%
   .[, "rideName" :=  sub("(\\_old)?\\.csv", "", filePath)] %>%
-  .[, rideName := ifelse(rideName == "7_dwarfs_train", "dwarfs_train", rideName)]
+  .[, rideName := toupper(ifelse(rideName == "7_dwarfs_train", "dwarfs_train", rideName))]
 
 round_time = function(x, precision, method = round) {
   if ("POSIXct" %in% class(x) == FALSE)
@@ -69,7 +73,7 @@ dt <- unique(rbindlist(apply(files, 1, function(x) {
            DAY = mday(DATETIME),
            TIME = as.ITime(DATETIME),
            DATETIME = NULL)] %>%
-  .[, WAITTIMEmean := mean(log(WAITTIME), na.rm = TRUE),
+  .[, WAITTIMEmean := mean(WAITTIME, na.rm = TRUE),
     by = .(RIDENAME, TYPE, DATE, MONTH, DAY, TIME)] %>%
   .[, WAITTIME := NULL] %>%
   .[order(RIDENAME, DATE, TYPE, TIME)] %>%
@@ -82,11 +86,11 @@ print(dt)
 ```
 
 ```{r}
-RIDENAME <- c("dwarfs_train", "alien_saucers", "dinosaur", 
+RIDENAME <- toupper(c("dwarfs_train", "alien_saucers", "dinosaur", 
                "expedition_everest", "flight_of_passage", "kilimanjaro_safaris", 
                "navi_river", "pirates_of_caribbean", "rock_n_rollercoaster", 
                "slinky_dog", "soarin", "spaceship_earth", "splash_mountain", 
-               "toy_story_mania")
+               "toy_story_mania"))
 OPENDATE <- as.Date(c("2014/05/28", "2018/06/30", "1998/04/22", "2006/04/09", 
                        "2017/05/27", "1998/04/22", "2017/05/27", "1973/12/17", 
                        "1999/07/29", "2018/06/30", "2005/05/15", "1982/10/01", 
@@ -103,7 +107,19 @@ PARK <- toupper(c("mk", "hs", "ak", "ak", "ak", "ak", "ak", "mk", "hs", "hs", "e
 dtMeta <- data.table(RIDENAME, OPENDATE, AGEHIERARCHY, SPLASH, INDOOR, PARK, DURATION, WAITPERHUNDRED)
 ```
 
-# **I DID A LOG TRANSFORM**
+```{r eval=FALSE}
+removeOutliers <- function(x) {
+  q <- quantile(as.numeric(x), na.rm = TRUE)
+  lower <- q["25%"]
+  upper <- q["75%"]
+  q <- x >= lower & x <= upper
+  q <- ifelse(is.na(q), TRUE, q)
+  return(x[ifelse(q, x, NA)])
+}
+
+cols <- grep(paste0(dtMeta$RIDENAME, collapse = "|"), colnames(dt), value = TRUE)
+dt <- dt[, (cols) := lapply(.SD, removeOutliers), .SDcols = cols]
+```
 
 ```{r warning=FALSE}
 library(GGally)
@@ -120,12 +136,8 @@ sapply(unique(dtMeta$PARK), function(x) {
 })
 ```
 
-# **TIME IS IN SECONDS SINCE MIDNIGHT**
 
 ```{r, echo = FALSE, results='hide', fig.keep='all'}
-library(tree)
-library(caret)
-library(rpart.plot)
 
 set.seed(1234)
 rowPicker <- sample(c(TRUE, FALSE), nrow(dt), replace = TRUE, prob = c(.5, .5))
@@ -195,12 +207,12 @@ tmp <- cbind(datetime, tmp)
 cols <- !grepl(paste0(shows, collapse = "|"), colnames(metadata))
 metadata <- merge(tmp, metadata[, ..cols], all.x = TRUE, by = "DATE")
 
-metadata[TIME >= as.ITime("06:00:00") | TIME <= as.ITime("03:00:00")]
+metadata <- metadata[TIME >= as.ITime("06:00:00") | TIME <= as.ITime("03:00:00")]
 
-tmp <- merge(dt, metadata, by = "DATE", all.x = TRUE) %>%
-  .[, DATE := as.ordered(format(as.Date(DATE), format = "%m-%d"))]
-as.ITime(unique(unlist(metadata[, .(MKEMHOPEN, EPEMHOPEN, HSEMHOPEN, AKEMHOPEN)])))
-# dt <- tmp
+tmp <- merge(dt, metadata, by = c("DATE", "TIME"), all.y = TRUE) %>%
+  .[, DATE := as.ordered(format(as.Date(DATE), format = "%m-%d"))] %>%
+  .[, YEAR := NULL]
+dt <- tmp
 rm(tmp)
 rm(metadata)
 head(dt)
@@ -209,19 +221,18 @@ head(dt)
 ```{r}
 set.seed(1234)
 rowPicker <- sample(c(TRUE, FALSE), nrow(dt), replace = TRUE, prob = c(.5, .5))
-train <- dt[rowPicker, ]
+train <- dt[rowPicker, TIME := as.numeric(TIME / 3600)]
 test <- dt[!rowPicker, ]
 colnames(train) <- toupper(colnames(train))
 # lapply(unique(dtMeta$PARK), function(x) {
 lapply(unique(dtMeta$PARK), function(x) {
-  # get rides that are in the same park, date, and time
+  # get columns for the park
+  # drop the columns for rides not in the park
   rides <-
-    c(colnames(train)[grepl(paste0(c(toupper(dtMeta$RIDENAME[dtMeta$PARK == x]),
-                                     paste0("(^", toupper(x), ")|(", toupper(x), "$)")),
-                                   collapse = "|"),
-                            colnames(train))],
-      "DATE", "MONTH", "DAY", "TIME",
-      "WDW_TICKET_SEASON", "DAYOFWEEK", "DAYOFYEAR", "WEEKOFYEAR", "MONTHOFYEAR", "YEAR", "SEASON", "HOLIDAYPX", "HOLIDAYM", "HOLIDAYN", "HOLIDAY", "WDWTICKETSEASON", "WDWRACEN", "WDWEVENTN", "WDWEVENT", "WDWRACE", "WDWSEASON", "WDWMAXTEMP", "WDWMINTEMP", "WDWMEANTEMP", "HOLIDAYJ", "INSESSION", "INSESSION_ENROLLMENT", "INSESSION_WDW", "INSESSION_DLR", "INSESSION_SQRT_WDW", "INSESSION_SQRT_DLR", "INSESSION_CALIFORNIA", "INSESSION_DC", "INSESSION_CENTRAL_FL", "INSESSION_DRIVE1_FL", "INSESSION_DRIVE2_FL", "INSESSION_DRIVE_CA", "INSESSION_FLORIDA", "INSESSION_MARDI_GRAS", "INSESSION_MIDWEST", "INSESSION_NY_NJ", "INSESSION_NY_NJ_PA", "INSESSION_NEW_ENGLAND", "INSESSION_NEW_JERSEY", "INSESSION_NOTHWEST", "INSESSION_PLANES", "INSESSION_SOCAL", "INSESSION_SOUTHWEST", "SUNSET_WDW", "PARTYSEASON_WDW", "WDWMINTEMP_MEAN", "WEATHER_WDWHIGH", "WEATHER_WDWLOW", "WEATHER_WDWPRECIP")
+    colnames(train)[!grepl(paste0(unique(dtMeta$PARK[!dtMeta$PARK %in% x]), 
+                                  collapse = "|"), colnames(train))]
+  rides <- rides[!grepl(paste0(dtMeta$RIDENAME[dtMeta$PARK != x], 
+                               collapse = "|"), rides)]
   # get the actual ride time variables
   actuals <- rides[grepl("(SACTMIN)", rides)]
   # return decision trees for the actual ride time variables
