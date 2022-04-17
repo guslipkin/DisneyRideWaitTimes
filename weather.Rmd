@@ -4,6 +4,51 @@ output: html_notebook
 ---
 
 ```{r}
-library(rNOMADS)
+library(tidync)
+library(tidyverse)
+library(data.table)
+```
+
+```{r}
+nc <- tidync("data/w2012_2018.nc")
+w2012_2018 <- nc %>%
+  hyper_tibble() %>%
+  data.table() %>%
+  .[, `:=`(TIME = as.POSIXct(time * 60 * 60,
+                             origin = "1900/01/01", tz = "EST"),
+           temp = ((t2m - 273.15) * 9/5) + 32,
+           rain = tp,
+           longitude = NULL, latitude = NULL,
+           t2m = NULL, tp = NULL, time = NULL)] %>%
+  .[, `:=`(DATE = as.ordered(as.Date(TIME, format = "%m/%d/%y", tz = "EST")),
+           hour = hour(as.ITime(TIME)),
+           TIME = NULL)]
+head(w2012_2018)
+
+nc <- tidync("data/w2019_2021.nc")
+w2019_2021 <- nc %>%
+  hyper_tibble() %>%
+  data.table() %>%
+  .[, `:=`(TIME = as.POSIXct(time * 60 * 60, 
+                             origin = "1900/01/01", tz = "EST"),
+           temp = ((t2m - 273.15) * 9/5) + 32,
+           rain = tp,
+           longitude = NULL, latitude = NULL, 
+           t2m = NULL, tp = NULL, time = NULL)] %>%
+  .[, `:=`(DATE = as.ordered(as.Date(TIME, format = "%m/%d/%y", tz = "EST")),
+           hour = hour(as.ITime(TIME)),
+           TIME = NULL)]
+head(w2019_2021)
+
+rbind(w2012_2018, w2019_2021)
+
+# w2019_2021 <- w2019_2021 %>%
+#   .[, `:=`(hour = hour(TIME), TIME = NULL)]
+
+nc <- merge(datetime[, `:=`(hour = hour(TIME))], 
+            w2019_2021, by = c("DATE", "hour"), all.x = TRUE) %>%
+  .[, hour := NULL] %>%
+  .[rowSums(is.na(.)) == 0]
+nc
 ```
 

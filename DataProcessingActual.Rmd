@@ -1,26 +1,26 @@
 ---
 title: "R Notebook"
 output:
-  html_notebook: default
-  pdf_document: default
+  pdf_document:
+    toc: true
+    toc_depth: 2
 ---
+
+# Load Libraries
 
 ```{r}
 library(dewey)
 library(data.table)
 library(tidyverse)
-library(sparklyr)
+library(tidync)
 
 library(tree)
+library(randomForest)
 library(caret)
 library(rpart.plot)
-
-Sys.setenv(JAVA_HOME = "/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home")
 ```
 
 ```{r}
-# sc <- spark_connect(master = "local")
-
 # if(file.exists("source")) unlink("source", TRUE)
 # if(file.exists("source-out")) unlink("source-out", TRUE)
 # 
@@ -31,6 +31,8 @@ Sys.setenv(JAVA_HOME = "/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/H
 
 # spark_disconnect(sc)
 ```
+
+# Load initial data
 
 ```{r}
 # load the wait time files
@@ -107,21 +109,30 @@ PARK <- toupper(c("mk", "hs", "ak", "ak", "ak", "ak", "ak", "mk", "hs", "hs", "e
 dtMeta <- data.table(RIDENAME, OPENDATE, AGEHIERARCHY, SPLASH, INDOOR, PARK, DURATION, WAITPERHUNDRED)
 ```
 
-```{r eval=FALSE}
+# Summary Statistics
+
+```{r}
 removeOutliers <- function(x) {
+  # get quantiles
   q <- quantile(as.numeric(x), na.rm = TRUE)
+  # get lower limit
   lower <- q["25%"]
+  # get upper limit
   upper <- q["75%"]
+  # produce T/F if x is in range
   q <- x >= lower & x <= upper
+  # if q is.na, change it to true, else keep q
   q <- ifelse(is.na(q), TRUE, q)
-  return(x[ifelse(q, x, NA)])
+  q <- ifelse(!is.na(q) & !q, NA, q)
+  return(x[q])
 }
 
 cols <- grep(paste0(dtMeta$RIDENAME, collapse = "|"), colnames(dt), value = TRUE)
 dt <- dt[, (cols) := lapply(.SD, removeOutliers), .SDcols = cols]
 ```
 
-```{r warning=FALSE}
+
+```{r warning=FALSE, eval=FALSE}
 library(GGally)
 
 summary(dt)
@@ -137,7 +148,7 @@ sapply(unique(dtMeta$PARK), function(x) {
 ```
 
 
-```{r, echo = FALSE, results='hide', fig.keep='all'}
+```{r, echo = FALSE, results='hide', fig.keep='all', eval=FALSE}
 
 set.seed(1234)
 rowPicker <- sample(c(TRUE, FALSE), nrow(dt), replace = TRUE, prob = c(.5, .5))
@@ -161,6 +172,8 @@ lapply(unique(dtMeta$PARK), function(x) {
 })
 ```
 
+# Load and flesh out metadata
+
 ```{r}
 # metadata <- unique(rbindlist(list(fread("data/metadata/metadata.csv", na.strings = c("")), 
 #                                   fread("data/metadata/metadata_old.csv", na.strings = c(""))),
@@ -175,7 +188,6 @@ tmp <- grep("OPEN|CLOSE|PRDDT[1-2]{1}|SHWNT[1-2]{1}|FIRET[1-2]{1}|PRDNT[1-2]{1}|
             colnames(metadata), value = TRUE)
 metadata <- metadata[!duplicated(metadata$DATE)]
 metadata[, (tmp) := lapply(.SD, as.ITime), .SDcols = tmp]
-head(metadata)
 # which(metadata$MKFIRET1 == metadata$MKFIRET2)
 datetime <- data.table("DATE" = rep(metadata$DATE, each = 288), 
                        "TIME" = as.ITime(rep(seq(0*3600, 24*3600-1, by = 60*5))))
@@ -210,21 +222,86 @@ metadata <- merge(tmp, metadata[, ..cols], all.x = TRUE, by = "DATE")
 metadata <- metadata[TIME >= as.ITime("06:00:00") | TIME <= as.ITime("03:00:00")]
 
 tmp <- merge(dt, metadata, by = c("DATE", "TIME"), all.y = TRUE) %>%
-  .[, DATE := as.ordered(format(as.Date(DATE), format = "%m-%d"))] %>%
-  .[, YEAR := NULL]
+  .[, `:=`(YEAR = NULL, MONTH = NULL, DAY = NULL)]
 dt <- tmp
 rm(tmp)
 rm(metadata)
-head(dt)
 ```
 
+# Lag the data
+
 ```{r}
-set.seed(1234)
+# lag the actual data
+cols <- paste0(dtMeta$RIDENAME, c("_SACTMIN"))
+dt <- dt[, (cols) :=  shift(.SD, type = "lead"), by = .(DATE), .SDcols = cols]
+```
+
+# Add in the weather data 
+
+```{r}
+nc <- tidync("data/w2012_2018.nc")
+w2012_2018 <- nc %>%
+  hyper_tibble() %>%
+  data.table() %>%
+  .[, `:=`(TIME = as.POSIXct(time * 60 * 60,
+                             origin = "1900/01/01", tz = "EST"),
+           temp = ((t2m - 273.15) * 9/5) + 32,
+           rain = tp,
+           longitude = NULL, latitude = NULL,
+           t2m = NULL, tp = NULL, time = NULL)] %>%
+  .[, `:=`(DATE = as.ordered(as.Date(TIME, format = "%m/%d/%y", tz = "EST")),
+           hour = hour(as.ITime(TIME)),
+           TIME = NULL)]
+head(w2012_2018)
+
+nc <- tidync("data/w2019_2021.nc")
+w2019_2021 <- nc %>%
+  hyper_tibble() %>%
+  data.table() %>%
+  .[, `:=`(TIME = as.POSIXct(time * 60 * 60, 
+                             origin = "1900/01/01", tz = "EST"),
+           temp = ((t2m - 273.15) * 9/5) + 32,
+           rain = tp,
+           longitude = NULL, latitude = NULL, 
+           t2m = NULL, tp = NULL, time = NULL)] %>%
+  .[, `:=`(DATE = as.ordered(as.Date(TIME, format = "%m/%d/%y", tz = "EST")),
+           hour = hour(as.ITime(TIME)),
+           TIME = NULL)]
+head(w2019_2021)
+
+rbind(w2012_2018, w2019_2021)
+
+# w2019_2021 <- w2019_2021 %>%
+#   .[, `:=`(hour = hour(TIME), TIME = NULL)]
+
+nc <- merge(datetime[, `:=`(hour = hour(TIME))], 
+            w2019_2021, by = c("DATE", "hour"), all.x = TRUE) %>%
+  .[, hour := NULL] %>%
+  .[rowSums(is.na(.)) == 0]
+nc
+
+dt <- merge(dt, nc, by = c("DATE", "TIME"), all.x = TRUE) %>%
+  .[, DATE := as.ordered(format(as.Date(DATE), format = "%m-%d"))]
+dt
+
+rm("datetime", "files", "nc", "w2012_2018", "w2019_2021")
+```
+
+# Split the data
+
+```{r}
+saveRDS(dt, "BIG_DATA.rds")
+set.seed(2022)
 rowPicker <- sample(c(TRUE, FALSE), nrow(dt), replace = TRUE, prob = c(.5, .5))
-train <- dt[rowPicker, TIME := as.numeric(TIME / 3600)]
-test <- dt[!rowPicker, ]
+train <- dt[rowPicker,]
+train[, TIME := as.numeric(as.numeric(TIME)  / 3600)]
+test <- dt[!rowPicker,]
 colnames(train) <- toupper(colnames(train))
-# lapply(unique(dtMeta$PARK), function(x) {
+```
+
+# Create the trees
+
+```{r}
 lapply(unique(dtMeta$PARK), function(x) {
   # get columns for the park
   # drop the columns for rides not in the park
@@ -236,11 +313,10 @@ lapply(unique(dtMeta$PARK), function(x) {
   # get the actual ride time variables
   actuals <- rides[grepl("(SACTMIN)", rides)]
   # return decision trees for the actual ride time variables
-  return(trees <- sapply(actuals, function(y) {
+  return(sapply(actuals, function(y) {
     tr <- rpart(as.formula(paste(y, "~ .")), train[, ..rides])
     rpart.plot(tr, main = y)
     return(tr)
     }))
 })
 ```
-
