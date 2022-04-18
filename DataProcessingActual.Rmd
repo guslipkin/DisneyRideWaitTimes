@@ -37,9 +37,11 @@ library(rpart.plot)
 ```{r}
 # load the wait time files
 files <-
-  data.table("filePath" = grep("*\\.csv", list.files("data/"), value = TRUE)) %>%
+  data.table("filePath" = grep("*\\.csv", list.files("data/"), 
+                               value = TRUE)) %>%
   .[, "rideName" :=  sub("(\\_old)?\\.csv", "", filePath)] %>%
-  .[, rideName := toupper(ifelse(rideName == "7_dwarfs_train", "dwarfs_train", rideName))]
+  .[, rideName :=
+      toupper(ifelse(rideName == "7_dwarfs_train", "dwarfs_train", rideName))]
 
 round_time = function(x, precision, method = round) {
   if ("POSIXct" %in% class(x) == FALSE)
@@ -57,13 +59,22 @@ longerData <- function(x) {
            .[, `:=`(TYPE = "SACTMIN", WAITTIME = SACTMIN, SACTMIN = NULL)],
          x %>% 
            .[, .(RIDENAME, date, datetime, SPOSTMIN)] %>% 
-           .[, `:=`(TYPE = "SPOSTMIN", WAITTIME = SPOSTMIN, SPOSTMIN = NULL)])
+           .[, `:=`(TYPE = "SPOSTMIN", WAITTIME = SPOSTMIN, SPOSTMIN = NULL)],
+         x %>%
+           .[, .(RIDENAME, date, datetime, CLOSED)] %>%
+           .[, `:=`(TYPE = "CLOSED", WAITTIME = CLOSED, CLOSED = NULL)])
     )
+}
+
+dropDuplicated <- function(x) {
+  x[!duplicated(x)]
 }
 
 dt <- unique(rbindlist(apply(files, 1, function(x) { 
     fread(paste0("data/", x["filePath"])) %>%
-    .[!is.na(SPOSTMIN) & SPOSTMIN >= 0 | !is.na(SACTMIN) & SACTMIN >= 0] %>%
+    .[, CLOSED := ifelse(!is.na(SPOSTMIN) & SPOSTMIN == -999, 1, 0)] %>%
+    .[, SPOSTMIN := 
+        ifelse(!is.na(SPOSTMIN) & SPOSTMIN == -999, NA, SPOSTMIN)] %>%
     .[, RIDENAME := x["rideName"]]
   }), use.names = TRUE)) %>%
   longerData(.) %>%
@@ -75,16 +86,19 @@ dt <- unique(rbindlist(apply(files, 1, function(x) {
            DAY = mday(DATETIME),
            TIME = as.ITime(DATETIME),
            DATETIME = NULL)] %>%
-  .[, WAITTIMEmean := mean(WAITTIME, na.rm = TRUE),
+  .[, WAITTIME := mean(WAITTIME, na.rm = TRUE),
     by = .(RIDENAME, TYPE, DATE, MONTH, DAY, TIME)] %>%
-  .[, WAITTIME := NULL] %>%
-  .[order(RIDENAME, DATE, TYPE, TIME)] %>%
-  unique() %>%
+  .[TYPE == "CLOSED", WAITTIME := 
+      ifelse(!is.nan(WAITTIME) & WAITTIME != 0, 1, 0)] %>%
+  dropDuplicated(.) %>%
   dcast(., DATE + MONTH + DAY + TIME ~ RIDENAME + TYPE, 
-        value.var = "WAITTIMEmean")
+        value.var = "WAITTIME")
 
 dt[dt == "NaN" | dt == "-Inf"] <- NA
 print(dt)
+# unique(dt$ALIEN_SAUCERS_SACTMIN)
+# unique(dt$WAITTIME[dt$TYPE == "CLOSED"])
+# dt[DATE == "06-30" & TIME == as.ITime("13:40:00")]
 ```
 
 ```{r}
@@ -104,9 +118,10 @@ INDOOR <- c(FALSE, FALSE, TRUE,  FALSE, TRUE, FALSE, TRUE,  TRUE,  TRUE,  FALSE,
 AGEHIERARCHY <- c(10, 13,  4,  8, 11, 5, 12,  1,  6, 14, 7,  2,  3,  9)
 DURATION <- c(3, 2.5, 3.5, 4, 6, 20, 5, 7.5, 1.5, 3, 8, 16, 18, 6.5)
 WAITPERHUNDRED <- c(5, 10, 3, 4, 4, 4, 5, 1.5, 2.5, 5, 3, 3, 3.5, 4.5)
-PARK <- toupper(c("mk", "hs", "ak", "ak", "ak", "ak", "ak", "mk", "hs", "hs", "ep", 
-          "ep", "mk", "hs"))
-dtMeta <- data.table(RIDENAME, OPENDATE, AGEHIERARCHY, SPLASH, INDOOR, PARK, DURATION, WAITPERHUNDRED)
+PARK <- toupper(c("mk", "hs", "ak", "ak", "ak", "ak", "ak", "mk", "hs", "hs", 
+                  "ep", "ep", "mk", "hs"))
+dtMeta <- data.table(RIDENAME, OPENDATE, AGEHIERARCHY, SPLASH, INDOOR, PARK, 
+                     DURATION, WAITPERHUNDRED)
 ```
 
 # Summary Statistics
@@ -127,7 +142,9 @@ removeOutliers <- function(x) {
   return(x[q])
 }
 
-cols <- grep(paste0(dtMeta$RIDENAME, collapse = "|"), colnames(dt), value = TRUE)
+cols <- grep(paste0(dtMeta$RIDENAME, collapse = "|"), colnames(dt), 
+             value = TRUE)
+cols <- cols[!grepl("CLOSED", cols)]
 dt <- dt[, (cols) := lapply(.SD, removeOutliers), .SDcols = cols]
 ```
 
@@ -149,7 +166,6 @@ sapply(unique(dtMeta$PARK), function(x) {
 
 
 ```{r, echo = FALSE, results='hide', fig.keep='all', eval=FALSE}
-
 set.seed(1234)
 rowPicker <- sample(c(TRUE, FALSE), nrow(dt), replace = TRUE, prob = c(.5, .5))
 train <- dt[rowPicker, ]
@@ -184,16 +200,19 @@ metadata <- fread("data/metadata/newMetadata.csv", na.strings = "") %>%
   .[, DATE := as.ordered(format(as.Date(DATE, format = "%m/%d/%y")))]
 colnames(metadata) <- toupper(colnames(metadata))
 
-tmp <- grep("OPEN|CLOSE|PRDDT[1-2]{1}|SHWNT[1-2]{1}|FIRET[1-2]{1}|PRDNT[1-2]{1}|SUNSET", 
-            colnames(metadata), value = TRUE)
+tmp <- 
+  grep("OPEN|CLOSE|PRDDT[1-2]{1}|SHWNT[1-2]{1}|FIRET[1-2]{1}|PRDNT[1-2]{1}|SUNSET", 
+       colnames(metadata), value = TRUE)
 metadata <- metadata[!duplicated(metadata$DATE)]
 metadata[, (tmp) := lapply(.SD, as.ITime), .SDcols = tmp]
 # which(metadata$MKFIRET1 == metadata$MKFIRET2)
-datetime <- data.table("DATE" = rep(metadata$DATE, each = 288), 
-                       "TIME" = as.ITime(rep(seq(0*3600, 24*3600-1, by = 60*5))))
+datetime <- 
+  data.table("DATE" = rep(metadata$DATE, each = 288), 
+             "TIME" = as.ITime(rep(seq(0*3600, 24*3600-1, by = 60*5))))
 shows <- grep("PRDDT[1-2]{1}|SHWNT[1-2]{1}|FIRET[1-2]{1}|PRDNT[1-2]{1}", 
               colnames(metadata), value = TRUE)
 showType <- c("PRDDT", "SHWNT", "FIRET", "PRDNT")
+
 tmp <- lapply(toupper(unique(dtMeta$PARK)), function(x) {
   type <- grep(paste0(x, showType, collapse = "|"), shows, value = TRUE)
   type <- unique(str_extract(type, paste0(showType, collapse = "|")))
@@ -219,7 +238,8 @@ tmp <- cbind(datetime, tmp)
 cols <- !grepl(paste0(shows, collapse = "|"), colnames(metadata))
 metadata <- merge(tmp, metadata[, ..cols], all.x = TRUE, by = "DATE")
 
-metadata <- metadata[TIME >= as.ITime("06:00:00") | TIME <= as.ITime("03:00:00")]
+metadata <- metadata[TIME >= as.ITime("06:00:00") | 
+                       TIME <= as.ITime("03:00:00")]
 
 tmp <- merge(dt, metadata, by = c("DATE", "TIME"), all.y = TRUE) %>%
   .[, `:=`(YEAR = NULL, MONTH = NULL, DAY = NULL)]
@@ -282,6 +302,18 @@ nc
 
 dt <- merge(dt, nc, by = c("DATE", "TIME"), all.x = TRUE) %>%
   .[, DATE := as.ordered(format(as.Date(DATE), format = "%m-%d"))]
+
+unique(dt$ALIEN_SAUCERS_CLOSED)
+cols <- grep("CLOSED", colnames(dt), value = TRUE)
+dt[, (cols) := lapply(.SD, function(x) { 
+  as.logical(case_when(
+    is.na(x) ~ FALSE,
+    x == 0 ~ FALSE,
+    TRUE ~ TRUE
+  )) 
+  }), .SDcols = cols]
+unique(dt$ALIEN_SAUCERS_CLOSED)
+
 dt
 
 rm("datetime", "files", "nc", "w2012_2018", "w2019_2021")
