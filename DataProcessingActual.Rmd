@@ -6,7 +6,7 @@ output:
     toc_depth: 2
 ---
 
-# Load Libraries
+## Load Libraries
 
 ```{r}
 library(dewey)
@@ -32,7 +32,7 @@ library(rpart.plot)
 # spark_disconnect(sc)
 ```
 
-# Load initial data
+## Load initial data
 
 ```{r}
 # load the wait time files
@@ -70,6 +70,8 @@ dropDuplicated <- function(x) {
   x[!duplicated(x)]
 }
 
+roundTime <- 5
+
 dt <- unique(rbindlist(apply(files, 1, function(x) { 
     fread(paste0("data/", x["filePath"])) %>%
     .[, CLOSED := ifelse(!is.na(SPOSTMIN) & SPOSTMIN == -999, 1, 0)] %>%
@@ -80,7 +82,7 @@ dt <- unique(rbindlist(apply(files, 1, function(x) {
   longerData(.) %>%
   .[, `:=`(DATE = as.ordered(as.Date(date, format = "%m/%d/%Y")),
            date = NULL,
-           DATETIME = round_time(datetime, 60*5, floor),
+           DATETIME = round_time(datetime, 60*roundTime, floor),
            datetime = NULL)] %>%
   .[, `:=`(MONTH = month(DATETIME),
            DAY = mday(DATETIME),
@@ -96,9 +98,6 @@ dt <- unique(rbindlist(apply(files, 1, function(x) {
 
 dt[dt == "NaN" | dt == "-Inf"] <- NA
 print(dt)
-# unique(dt$ALIEN_SAUCERS_SACTMIN)
-# unique(dt$WAITTIME[dt$TYPE == "CLOSED"])
-# dt[DATE == "06-30" & TIME == as.ITime("13:40:00")]
 ```
 
 ```{r}
@@ -124,30 +123,130 @@ dtMeta <- data.table(RIDENAME, OPENDATE, AGEHIERARCHY, SPLASH, INDOOR, PARK,
                      DURATION, WAITPERHUNDRED)
 ```
 
-# Summary Statistics
+## Summary Statistics (Wait Times)
+
+```{r}
+dt %>%
+  select(ends_with("_SACTMIN")) %>%
+  `colnames<-`(., dtMeta$RIDENAME[order(dtMeta$RIDENAME)]) %>%
+  filter(rowSums(!is.na(.)) != 0) %>%
+  melt() %>%
+  mutate(variable = factor(variable, levels = rev(unique(variable)))) %>%
+  ggplot() +
+  geom_vline(xintercept = 30, color = "green", size = 1) +
+  geom_vline(xintercept = 60, color = "yellow", size = 1) +
+  geom_vline(xintercept = 90, color = "orange", size = 1) +
+  geom_vline(xintercept = 120, color = "red", size = 1) +
+  xlim(c(0, 180)) +
+  geom_boxplot(aes(y = variable, x = value), outlier.alpha = .2, size = .75,
+               color = RColorBrewer::brewer.pal(9, "Set1")[4]) +
+  labs(title = "Distribution of actual ride wait times") +
+  xlab("Actual Ride Wait Time") +
+  ylab("Ride")
+
+dt %>%
+  select(ends_with("_SPOSTMIN")) %>%
+  `colnames<-`(., dtMeta$RIDENAME[order(dtMeta$RIDENAME)]) %>%
+  filter(rowSums(!is.na(.)) != 0) %>%
+  melt() %>%
+  mutate(variable = factor(variable, levels = rev(unique(variable)))) %>%
+  ggplot() +
+  geom_vline(xintercept = 30, color = "green", size = 1) +
+  geom_vline(xintercept = 60, color = "yellow", size = 1) +
+  geom_vline(xintercept = 90, color = "orange", size = 1) +
+  geom_vline(xintercept = 120, color = "red", size = 1) +
+  xlim(c(0, 180)) +
+  geom_boxplot(aes(y = variable, x = value), outlier.alpha = .2, size = .75,
+               color = RColorBrewer::brewer.pal(9, "Set1")[5]) +
+  labs(title = "Distribution of posted ride wait times") +
+  xlab("Posted Ride Wait Time") +
+  ylab("Ride")
+```
+
+```{r}
+dt %>%
+  select(ends_with(c("_SACTMIN", "_SPOSTMIN"))) %>%
+  melt() %>%
+  filter(!is.na(value)) %>%
+  mutate(type = as.factor(ifelse(grepl("SACTMIN", variable), 
+                                 "Actual", "Posted"))) %>%
+  mutate(variable = factor(str_remove(variable, "_SACTMIN|_SPOSTMIN"), 
+         levels = rev(sort(dtMeta$RIDENAME)))) %>%
+  ggplot() +
+  geom_vline(xintercept = 30, color = "green", size = 1) +
+  geom_vline(xintercept = 60, color = "yellow", size = 1) +
+  geom_vline(xintercept = 90, color = "orange", size = 1) +
+  geom_vline(xintercept = 120, color = "red", size = 1) +
+  xlim(c(0, 180)) +
+  geom_boxplot(aes(y = variable, x = value, color = type), size = .75,
+               position = "identity", outlier.alpha = .1, fill = "transparent") +
+  scale_color_manual(values = RColorBrewer::brewer.pal(9, "Set1")[4:5], 
+                     name = "Time Type", 
+                     labels = c("Actual", "Posted")) +
+  labs(title = "Distribution of posted and actual ride wait times") +
+  xlab("Posted and Actual Ride Wait Time") +
+  ylab("Ride") +
+  theme(legend.position = "bottom")
+```
+
+
+### Remove Outliers 
 
 ```{r}
 removeOutliers <- function(x) {
-  # get quantiles
-  q <- quantile(as.numeric(x), na.rm = TRUE)
-  # get lower limit
-  lower <- q["25%"]
-  # get upper limit
-  upper <- q["75%"]
-  # produce T/F if x is in range
-  q <- x >= lower & x <= upper
-  # if q is.na, change it to true, else keep q
-  q <- ifelse(is.na(q), TRUE, q)
-  q <- ifelse(!is.na(q) & !q, NA, q)
-  return(x[q])
+  z <- abs(x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+  x <- ifelse(is.na(x) | z < 3, x, NA)
+  return(x)
 }
 
-cols <- grep(paste0(dtMeta$RIDENAME, collapse = "|"), colnames(dt), 
+cols <- grep(paste0(dtMeta$RIDENAME, collapse = "|"), colnames(dt),
              value = TRUE)
 cols <- cols[!grepl("CLOSED", cols)]
 dt <- dt[, (cols) := lapply(.SD, removeOutliers), .SDcols = cols]
 ```
 
+### T Test
+
+```{r}
+big <- apply(expand_grid(dtMeta$RIDENAME, c("_SACTMIN", "_SPOSTMIN")), 1, 
+      function(x) {
+        paste0(x, collapse = "")
+      })
+small <- rep(dtMeta$RIDENAME, each = 2)
+names(small) <- big
+ttest <- dt %>%
+  select(ends_with(c("_SACTMIN", "_SPOSTMIN"))) %>%
+  melt() %>%
+  filter(!is.na(value)) %>%
+  mutate(type = as.factor(ifelse(
+    grepl("SACTMIN", variable), "Actual", "Posted")))
+
+t.test(ttest[type == "Actual" & !is.nan(value), 
+             value := log(value)][, .(value)], 
+       ttest[type == "Posted" & !is.nan(value), 
+             value := log(value)][, .(value)])
+
+# ttest <- dt %>%
+#   select(DATE, TIME, ends_with(c("_SACTMIN", "_SPOSTMIN"))) %>%
+#   pivot_longer(cols = 3:ncol(.)) %>%
+#   mutate(type = as.factor(ifelse(grepl("SACTMIN", name), 
+#                                  "Actual", "Posted"))) %>%
+#   mutate(name = as.factor(small[name])) %>%
+#   data.table() %>%
+#   dcast(DATE + TIME + name ~ type, value.var = "value",
+#         fun.aggregate = function(x) { mean(x, na.rm = TRUE) }) %>%
+#   filter(!is.nan(Actual) & !is.nan(Posted))
+# 
+# ttest <- rbindlist(lapply(unique(ttest$name), function(x) {
+#   tmp <- summary(lm(Actual ~ Posted, ttest[name == x]))
+#   print(tmp)
+#   data.table(name = x,
+#              "r2" = round(tmp$adj.r.squared, 4),
+#              "interceptP" = round(tmp$coefficients[1, 4], 4),
+#              "postedP" = round(tmp$coefficients[2, 4], 4))
+# }))
+# ttest[order(name)]
+```
 
 ```{r warning=FALSE, eval=FALSE}
 library(GGally)
@@ -188,7 +287,7 @@ lapply(unique(dtMeta$PARK), function(x) {
 })
 ```
 
-# Load and flesh out metadata
+## Load and flesh out metadata
 
 ```{r}
 # metadata <- unique(rbindlist(list(fread("data/metadata/metadata.csv", na.strings = c("")), 
@@ -208,7 +307,7 @@ metadata[, (tmp) := lapply(.SD, as.ITime), .SDcols = tmp]
 # which(metadata$MKFIRET1 == metadata$MKFIRET2)
 datetime <- 
   data.table("DATE" = rep(metadata$DATE, each = 288), 
-             "TIME" = as.ITime(rep(seq(0*3600, 24*3600-1, by = 60*5))))
+             "TIME" = as.ITime(rep(seq(0*3600, 24*3600-1, by = 60*roundTime))))
 shows <- grep("PRDDT[1-2]{1}|SHWNT[1-2]{1}|FIRET[1-2]{1}|PRDNT[1-2]{1}", 
               colnames(metadata), value = TRUE)
 showType <- c("PRDDT", "SHWNT", "FIRET", "PRDNT")
@@ -248,15 +347,7 @@ rm(tmp)
 rm(metadata)
 ```
 
-# Lag the data
-
-```{r}
-# lag the actual data
-cols <- paste0(dtMeta$RIDENAME, c("_SACTMIN"))
-dt <- dt[, (cols) :=  shift(.SD, type = "lead"), by = .(DATE), .SDcols = cols]
-```
-
-# Add in the weather data 
+## Add in the weather data 
 
 ```{r}
 nc <- tidync("data/w2012_2018.nc")
@@ -272,7 +363,6 @@ w2012_2018 <- nc %>%
   .[, `:=`(DATE = as.ordered(as.Date(TIME, format = "%m/%d/%y", tz = "EST")),
            hour = hour(as.ITime(TIME)),
            TIME = NULL)]
-head(w2012_2018)
 
 nc <- tidync("data/w2019_2021.nc")
 w2019_2021 <- nc %>%
@@ -287,9 +377,8 @@ w2019_2021 <- nc %>%
   .[, `:=`(DATE = as.ordered(as.Date(TIME, format = "%m/%d/%y", tz = "EST")),
            hour = hour(as.ITime(TIME)),
            TIME = NULL)]
-head(w2019_2021)
 
-rbind(w2012_2018, w2019_2021)
+w2019_2021 <- rbind(w2012_2018, w2019_2021)
 
 # w2019_2021 <- w2019_2021 %>%
 #   .[, `:=`(hour = hour(TIME), TIME = NULL)]
@@ -298,12 +387,10 @@ nc <- merge(datetime[, `:=`(hour = hour(TIME))],
             w2019_2021, by = c("DATE", "hour"), all.x = TRUE) %>%
   .[, hour := NULL] %>%
   .[rowSums(is.na(.)) == 0]
-nc
 
 dt <- merge(dt, nc, by = c("DATE", "TIME"), all.x = TRUE) %>%
   .[, DATE := as.ordered(format(as.Date(DATE), format = "%m-%d"))]
 
-unique(dt$ALIEN_SAUCERS_CLOSED)
 cols <- grep("CLOSED", colnames(dt), value = TRUE)
 dt[, (cols) := lapply(.SD, function(x) { 
   as.logical(case_when(
@@ -312,29 +399,54 @@ dt[, (cols) := lapply(.SD, function(x) {
     TRUE ~ TRUE
   )) 
   }), .SDcols = cols]
-unique(dt$ALIEN_SAUCERS_CLOSED)
-
-dt
 
 rm("datetime", "files", "nc", "w2012_2018", "w2019_2021")
 ```
 
-# Split the data
-
 ```{r}
-saveRDS(dt, "BIG_DATA.rds")
-set.seed(2022)
-rowPicker <- sample(c(TRUE, FALSE), nrow(dt), replace = TRUE, prob = c(.5, .5))
-train <- dt[rowPicker,]
-train[, TIME := as.numeric(as.numeric(TIME)  / 3600)]
-test <- dt[!rowPicker,]
-colnames(train) <- toupper(colnames(train))
+# saveRDS(dt, "BIG_DATA.rds")
+# dt <- readRDS("BIG_DATA.rds")
 ```
 
-# Create the trees
+
+## Lag the data
 
 ```{r}
-lapply(unique(dtMeta$PARK), function(x) {
+# lag the actual data
+cols <- paste0(dtMeta$RIDENAME, c("_SACTMIN"))
+dt <- dt[, (cols) :=  shift(.SD, n = 1, type = "lead"), 
+         by = .(DATE), .SDcols = cols]
+```
+
+## Split the data
+
+```{r}
+set.seed(2022)
+rowPicker <- sample(c(TRUE, FALSE), nrow(dt), replace = TRUE, prob = c(.8, .2))
+
+cols <- sapply(dt, function(x) { is.factor(x) | is.character(x) })
+cols <- names(cols)[cols == TRUE & names(cols) != "DATE"]
+
+dt2 <- dt
+dt2 <- dt2[, (cols) := lapply(.SD, function(x = .SD, y = names(.SD)) {
+  factor(x, levels = unique(x))
+}), .SDcols = cols]
+
+train <- dt2[rowPicker]
+train[, TIME := as.numeric(as.numeric(TIME)  / 3600)]
+
+test <- dt2[rowPicker]
+test[, TIME := as.numeric(as.numeric(TIME)  / 3600)]
+
+colnames(train) <- toupper(colnames(train))
+colnames(test) <- toupper(colnames(test))
+```
+
+## Create the trees
+
+```{r, out.width="1920px", out.height="1080px"}
+cat("", file = "trees.txt")
+tr <- rbindlist(lapply(unique(dtMeta$PARK), function(x) {
   # get columns for the park
   # drop the columns for rides not in the park
   rides <-
@@ -345,10 +457,45 @@ lapply(unique(dtMeta$PARK), function(x) {
   # get the actual ride time variables
   actuals <- rides[grepl("(SACTMIN)", rides)]
   # return decision trees for the actual ride time variables
-  return(sapply(actuals, function(y) {
+  return(rbindlist(lapply(actuals, function(y) {
     tr <- rpart(as.formula(paste(y, "~ .")), train[, ..rides])
+    cat(paste0(y, "\n"), file = "trees.txt", append = TRUE)
+    sink("trees.txt", append = TRUE); print(tr); sink()
+    cat("\n\n", file = "trees.txt", append = TRUE)
     rpart.plot(tr, main = y)
+    pred <- predict(tr, test)
+    tmp <- data.table("actual" = test[[y]], "predicted" = pred)
+    tmp <- tmp[!is.na(tmp$actual)][, `:=`(lower = actual * .85,
+                                          upper = actual * 1.15)]
+    tmp[, within := 
+          ifelse(predicted >= lower & predicted <= upper, TRUE, FALSE)]
+    tmpTbl <- table(tmp$within)
+    tr <- data.table("ride" = y,
+                     "mse" = mean((pred - test[[y]])^2, na.rm = TRUE),
+                     "accuracy" = tmpTbl["TRUE"] / sum(tmpTbl),
+                     "error" = mean(ifelse(test[[y]] - pred > 0, 1, 0), 
+                                    na.rm = TRUE),
+                     "time" = mean(test[[y]], na.rm = TRUE),
+                     "lower" = mean(tmp$lower),
+                     "upper" = mean(tmp$upper))
     return(tr)
-    }))
-})
+    })))
+}))
+tr[order(-accuracy),]
+fwrite(tr, "accuracy.csv")
+mean(tr$accuracy)
+
+# Histogram
+hist(tr$accuracy, prob = TRUE,
+     col = "grey",
+     main = "", xlab = "", ylab = "",
+     xlim = c(0, .5))
+par(new = TRUE)
+boxplot(tr$accuracy, horizontal = TRUE, axes = FALSE,
+        ylim = c(0, .5),
+        col = rgb(0, 0.8, 1, alpha = 0.5),
+        xlab = "Accuracy", ylab = "Count",
+        main = "Distribution of levels of model accuracy")
+box()
 ```
+
