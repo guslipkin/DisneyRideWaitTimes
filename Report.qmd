@@ -107,12 +107,12 @@ there is an apparent difference between the two. When we overlay the actual and
 posted distributions, we see that there is a good split between the two.
 
 ::: {#fig-boxplots layout="[[1,1], [1]]"}
-![Actual Wait Times](Trees/actual.png)
+![Actual Wait Times](Trees/actual.png){#fig-actual}
 
-![Posted Wait Times](Trees/posted.png)
+![Posted Wait Times](Trees/posted.png){#fig-posted}
 
-![Actual and Posted Wait Times](Trees/actual_posted.png)
-
+![Actual and Posted Wait Times](Trees/actual_posted.png){#fig-actual-posted}
+Distribution of Actual and Posted wait Times
 :::
 
 The difference between the posted and actual ride wait times seems rather large
@@ -139,9 +139,34 @@ that the posted wait time cannot be a good predictor of the actual wait time.
 >
 >  24.61871  46.42739 
 
+\pagebreak
+
 ### Other Variables
 
+While there are a great many explanatory variables available to me in the
+dataset, I will explore only a few more that I believe will have an impact on
+wait times. The first is the amount of schools that are in session. We generally
+believe Disney's busiest times to be when schools are not in session during the
+summer months, Holiday season, and Spring break weeks. In fact, we can see these
+seasonal trends in @fig-schools where there are extreme low points in July and
+August, and late December and early January, with some dips in February, March,
+and late November for Thanksgiving.
 
+![Schools in Session](Trees/schools.png){#fig-schools}
+
+The next two variables I wanted to look at are temperature and rainfall. Both
+can make or break a Disney experience and can have an effect on the number of
+people who are willing to stand in line. As expected, temperatures rise from
+winter lows from December to February to summer highs in July and August.
+Rainfall is more unpredictable but is generally lowest in March and November,
+and highest in the summer months.
+
+::: {#fig-climate layout-ncol=2}
+![Temperature](Trees/temp.png)
+
+![Rainfall](Trees/rain.png)
+Climate Data Over Time
+:::
 
 # Research Design
 
@@ -633,11 +658,51 @@ dt %>%
   .[, INSESSION_ENROLLMENT := mean(INSESSION_ENROLLMENT, na.rm = TRUE) * 100, 
     by = DATE] %>%
   unique() %>%
-  filter(DATE %in% c("01-01", "01-02")) %>%
-  ggplot(aes(x = DATE, y = INSESSION_ENROLLMENT)) +
-  # geom_col()
-  geom_area(fill = "blue", size = 2, position = "identity") +
-  geom_line()
+  ggplot(aes(x = as.numeric(DATE), y = INSESSION_ENROLLMENT)) +
+  geom_area(alpha = 0.4) +
+  geom_line(color = "black", size = 1) +
+  theme_minimal() +
+  scale_x_continuous(name = "Date", 
+                     breaks = (1:12*30.5)-30.5, labels = month.abb) +
+  labs(title = "Percent of Schools in Session Across the USA by Month") +
+  ylab("Percent of Schools in Session")
+```
+
+```{r}
+#| layout-ncol: 2
+#| fig-title: Temperature and Rainfall Over Time
+#| warning: FALSE
+dt %>%
+  .[, .(DATE, temp)] %>%
+  .[, `:=`(max = max(temp, na.rm = TRUE),
+           min = min(temp, na.rm = TRUE),
+           mean = mean(temp, na.rm = TRUE)), by = DATE] %>%
+  unique() %>%
+  ggplot(aes(x = as.numeric(DATE))) +
+  geom_line(aes(y = min), color = "blue") +
+  geom_line(aes(y = max), color = "red") +
+  geom_line(aes(y = mean)) +
+  theme_minimal() +
+  scale_x_continuous(name = "Date", 
+                     breaks = (1:12*30.5)-30.5, labels = month.abb) +
+  labs(title = "Minimum, Maximum, and Mean Temperature by Date") +
+  ylab("Temperature (Fahrenheit)")
+
+dt %>%
+  .[, .(DATE, rain)] %>%
+  .[, `:=`(max = max(rain, na.rm = TRUE),
+           min = min(rain, na.rm = TRUE),
+           mean = mean(rain, na.rm = TRUE)), by = DATE] %>%
+  unique() %>%
+  ggplot(aes(x = as.numeric(DATE))) +
+  geom_line(aes(y = min), color = "blue") +
+  geom_line(aes(y = max), color = "red") +
+  geom_line(aes(y = mean)) +
+  theme_minimal() +
+  scale_x_continuous(name = "Date", 
+                     breaks = (1:12*30.5)-30.5, labels = month.abb) +
+  labs(title = "Minimum, Maximum, and Mean Rainfall by Date") +
+  ylab("Rainfall (meters)")
 ```
 
 
