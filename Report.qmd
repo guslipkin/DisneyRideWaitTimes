@@ -509,9 +509,9 @@ dt %>%
   xlim(c(0, 180)) +
   geom_boxplot(aes(y = variable, x = value, color = type), size = .75,
                position = "identity", outlier.alpha = .1, fill = "transparent") +
-  scale_color_manual(values = RColorBrewer::brewer.pal(9, "Set1")[5:4], 
+  scale_color_manual(values = RColorBrewer::brewer.pal(9, "Set1")[4:5], 
                      name = "Time Type", 
-                     labels = c("Posted", "Actual")) +
+                     labels = c("Actual", "Posted")) +
   labs(title = "Distribution of posted and actual ride wait times") +
   xlab("Posted and Actual Ride Wait Time") +
   ylab("Ride") +
